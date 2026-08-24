@@ -1,5 +1,5 @@
 import httpx
-from .config import DEXSCREENER_BASE_URL, MIN_LIQUIDITY_USD
+from .config import DEXSCREENER_BASE_URL, MIN_LIQUIDITY_USD, MAX_LIQUIDITY_USD
 
 PUMPFUN_IDENTIFIERS = ('pump.fun', 'pumpfun')
 
@@ -8,8 +8,6 @@ class Scanner:
         self.client=httpx.AsyncClient(base_url=DEXSCREENER_BASE_URL, timeout=10.0, headers={'User-Agent':'pumpfun-15sec-bot/1.0'})
 
     async def discover(self):
-        # DexScreener search is used only as a market-data source; the Pump.fun check
-        # requires the pair URL/DEX metadata to identify Pump.fun-origin pairs.
         candidates=[]
         for q in ('pump.fun','pumpfun'):
             r=await self.client.get('/latest/dex/search',params={'q':q})
@@ -20,7 +18,7 @@ class Scanner:
                 dex=str(p.get('dexId') or '').lower()
                 if not any(x in url or x in dex for x in PUMPFUN_IDENTIFIERS): continue
                 liq=float((p.get('liquidity') or {}).get('usd') or 0)
-                if liq < MIN_LIQUIDITY_USD: continue
+                if liq < MIN_LIQUIDITY_USD or liq > MAX_LIQUIDITY_USD: continue
                 price=float(p.get('priceUsd') or 0)
                 if price<=0: continue
                 candidates.append({
@@ -32,7 +30,6 @@ class Scanner:
                     'url':str(p.get('url') or ''),
                     'created_at':int(p.get('pairCreatedAt') or 0),
                 })
-        # Deduplicate by pair address and sort the most liquid first.
         out={x['pair_address']:x for x in candidates if x['pair_address']}
         return sorted(out.values(), key=lambda x:x['liquidity_usd'], reverse=True)
 
